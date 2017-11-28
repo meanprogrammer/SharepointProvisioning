@@ -19,8 +19,8 @@ $sourceSite = "/teams/template_collab";
 $sourceWebUrl = "https://{0}.sharepoint.com{1}" -f $tenant, $sourceSite;
 
 #TODO: Replace with title and alias of website 
-$title = "foo165"
-$alias = "foo165"
+$title = "foo171"
+$alias = "foo171"
 #TODO: Replace with title and alias of website
 
 #Variables
@@ -60,7 +60,7 @@ echo 'START: GET TEMPLATE'
 #it will generate the template, else it will skip the generation
 #and will assume that the template already exist
 if($getAllTemplate -eq $True) {
-    Get-PnPProvisioningTemplate -Out "PNP\Complete.pnp" -Force -PersistBrandingFiles -PersistPublishingFiles -IncludeNativePublishingFiles -ExcludeHandlers ComposedLook -Web $sourceWeb
+    Get-PnPProvisioningTemplate -Out "PNP\Complete.pnp" -Force -PersistBrandingFiles -PersistPublishingFiles -IncludeNativePublishingFiles -Handlers All -ExcludeHandlers ComposedLook
 } else {
     echo "SKIPPED GET TEMPLATE"
 }
@@ -183,7 +183,7 @@ echo "END: ADD USER AS OWNER TO TARGET"
 
 echo "START: APPLY TEMPLATE"
 #Apply the template to the target site
-Apply-PnPProvisioningTemplate -Path "PNP\Complete.pnp" -Handlers All -ExcludeHandlers ComposedLook -Web $web 
+Apply-PnPProvisioningTemplate -Path "PNP\Complete.pnp" -Handlers All -ExcludeHandlers ComposedLook -ErrorAction SilentlyContinue 
 echo "END: APPLY TEMPLATE"
 
 echo "START: APPLY CONTENTTYPES"
@@ -313,7 +313,7 @@ do {
         $retval = Get-PnPFile -Url "SitePages/Home.aspx" -AsListItem -Web $web #Get-PnPListItem -List "SitePages" #-Query  "<View><Query><Where><Eq><FieldRef Name='Title'/><Value Type='Text'>Home</Value></Eq></Where></Query></View>"
         
         echo "set type to home"
-        Set-PnPListItem -List "SitePages" -Identity $retval.Id -Values @{"PageLayoutType"="Home"} -Web $web -ErrorAction Stop
+        Set-PnPListItem -List "SitePages" -Identity $retval.Id -Values @{"PageLayoutType"="Home"} -Web $web -ErrorAction SilentlyContinue
         echo "set type to home"
         $setHome = $TRUE;
     }   
