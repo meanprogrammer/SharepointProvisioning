@@ -4,7 +4,7 @@ Set-PnPTraceLog -On -LogFile traceoutput.txt -Level Debug
 
 
 #For Dev Purpose only
-#$PlainPassword = "plainpassword"
+#$PlainPassword = "Verbinden1"
 #$SecurePassword = $PlainPassword | ConvertTo-SecureString -AsPlainText -Force
 #$UserName = "vdudan@adbdev.onmicrosoft.com"
 #$credentials = New-Object System.Management.Automation.PSCredential -ArgumentList $UserName, $SecurePassword
@@ -19,8 +19,8 @@ $sourceSite = "/teams/template_collab";
 $sourceWebUrl = "https://{0}.sharepoint.com{1}" -f $tenant, $sourceSite;
 
 #TODO: Replace with title and alias of website 
-$title = "foo171"
-$alias = "foo171"
+$title = "foo177"
+$alias = "foo177"
 #TODO: Replace with title and alias of website
 
 #Variables
@@ -31,10 +31,10 @@ $context = $null
 
 
 #Flags: True to generate template
-$getAllTemplate = $False;
-$getContentTypeTemplate = $False;
-$getNavigationTemplate = $False;
-$getContentTemplate = $False;
+$getAllTemplate = $true;
+$getContentTypeTemplate = $false;
+$getNavigationTemplate = $false;
+$getContentTemplate = $false;
 #Flags: True to generate template
 
 
@@ -60,7 +60,7 @@ echo 'START: GET TEMPLATE'
 #it will generate the template, else it will skip the generation
 #and will assume that the template already exist
 if($getAllTemplate -eq $True) {
-    Get-PnPProvisioningTemplate -Out "PNP\Complete.pnp" -Force -PersistBrandingFiles -PersistPublishingFiles -IncludeNativePublishingFiles -Handlers All -ExcludeHandlers ComposedLook
+    Get-PnPProvisioningTemplate -Out "PNP\Complete.pnp" -Force -PersistBrandingFiles -PersistPublishingFiles -IncludeNativePublishingFiles -Handlers All -ExcludeHandlers ComposedLook -SkipVersionCheck  
 } else {
     echo "SKIPPED GET TEMPLATE"
 }
@@ -73,7 +73,7 @@ echo "START: GETTING CONTENTTYPES"
 if($getContentTypeTemplate -eq $True) {
     #Get the field, content types and list template and assign them to variable 
     #for in memory modification
-    $tpl = Get-PnPProvisioningTemplate -OutputInstance -Handlers Fields, ContentTypes, Lists -Web $sourceWeb
+    $tpl = Get-PnPProvisioningTemplate -OutputInstance  -SkipVersionCheck -Handlers Fields, ContentTypes, Lists -Web $sourceWeb 
     $contentTypes = $tpl.ContentTypes
     foreach($ct in $contentTypes){              
            if($ct.Name -eq 'ADB Document' -Or $ct.Name -eq 'ADB Country Document' -Or $ct.Name -eq 'ADB Project Document') {
@@ -101,7 +101,7 @@ echo "END: GETTING CONTENTTYPES"
 #and will assume that the template already exist
 echo "START: GETTING NAVIGATION"
 if($getNavigationTemplate -eq $True) {
-    Get-PnPProvisioningTemplate -Force -Out "PNP\collabNAV.pnp" -Handlers Navigation -Web $sourceWeb
+    Get-PnPProvisioningTemplate -Force -Out "PNP\collabNAV.pnp" -Handlers Navigation  -SkipVersionCheck -Web $sourceWeb
 } else {
     echo "SKIPPED GET NAVIGATION TEMPLATE"
 }
@@ -112,7 +112,7 @@ echo "END: GETTING NAVIGATION"
 #and will assume that the template already exist
 echo "START: GETTING HOMEPAGE"
 if($getContentTemplate -eq $True) {
-    Get-PnPProvisioningTemplate -Force -Out "PNP\collabPP.pnp" -Handlers Pages, PageContents -Web $sourceWeb
+    Get-PnPProvisioningTemplate -Force -Out "PNP\collabPP.pnp" -Handlers Pages, PageContents  -SkipVersionCheck -Web $sourceWeb
 } else {
     echo "SKIPPED GET CONTENT TEMPLATE"
 }
@@ -121,11 +121,18 @@ echo "END: GETTING HOMEPAGE"
 #Create the provisioned site
 $targetWebUrl = New-PnPSite -Type TeamSite -Title $title -Alias $alias 
 
+DO
+{
+    Write-Host "Waiting...   $targetWebUrl"
+    Start-Sleep -Seconds 5
+} While ($targetWebUrl -eq $null)
+
+
 #disconnect from the source website
 Disconnect-PnPOnline
 
 #connect to the target website
-Connect-PnPOnline -url $targetWebUrl -Credentials $credentials;
+Connect-PnPOnline -Url $targetWebUrl -Credentials $credentials;
 
 #get the context, web, lists of the target website
 $context = Get-PnPContext
@@ -183,7 +190,7 @@ echo "END: ADD USER AS OWNER TO TARGET"
 
 echo "START: APPLY TEMPLATE"
 #Apply the template to the target site
-Apply-PnPProvisioningTemplate -Path "PNP\Complete.pnp" -Handlers All -ExcludeHandlers ComposedLook -ErrorAction SilentlyContinue 
+Apply-PnPProvisioningTemplate -Path "PNP\Complete.pnp" -Handlers All -ExcludeHandlers ComposedLook 
 echo "END: APPLY TEMPLATE"
 
 echo "START: APPLY CONTENTTYPES"
@@ -310,7 +317,7 @@ do {
         $context.ExecuteQuery()
 
         echo "get list item"
-        $retval = Get-PnPFile -Url "SitePages/Home.aspx" -AsListItem -Web $web #Get-PnPListItem -List "SitePages" #-Query  "<View><Query><Where><Eq><FieldRef Name='Title'/><Value Type='Text'>Home</Value></Eq></Where></Query></View>"
+        $retval = Get-PnPFile -Url "SitePages/Home.aspx" -AsListItem -Web $web -ErrorAction SilentlyContinue #Get-PnPListItem -List "SitePages" #-Query  "<View><Query><Where><Eq><FieldRef Name='Title'/><Value Type='Text'>Home</Value></Eq></Where></Query></View>"
         
         echo "set type to home"
         Set-PnPListItem -List "SitePages" -Identity $retval.Id -Values @{"PageLayoutType"="Home"} -Web $web -ErrorAction SilentlyContinue
