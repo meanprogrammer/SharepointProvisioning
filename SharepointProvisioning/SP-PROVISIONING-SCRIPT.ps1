@@ -16,11 +16,12 @@ $credentials = Get-Credential;
 #variables
 $tenant = "adbdev";
 $sourceSite = "/teams/template_collab";
+#$sourceSite = "/sites/TeamCollaborationWorkspace";
 $sourceWebUrl = "https://{0}.sharepoint.com{1}" -f $tenant, $sourceSite;
 
 #TODO: Replace with title and alias of website 
-$title = "foo177"
-$alias = "foo177"
+$title = "foo188"
+$alias = "foo188"
 #TODO: Replace with title and alias of website
 
 #Variables
@@ -32,9 +33,9 @@ $context = $null
 
 #Flags: True to generate template
 $getAllTemplate = $true;
-$getContentTypeTemplate = $false;
-$getNavigationTemplate = $false;
-$getContentTemplate = $false;
+$getContentTypeTemplate = $true;
+$getNavigationTemplate = $true;
+$getContentTemplate = $true;
 #Flags: True to generate template
 
 
@@ -82,7 +83,7 @@ if($getContentTypeTemplate -eq $True) {
                foreach($ff in $fields) 
                {
                    #set the field to Hidden
-                   if($ff.Name -eq 'ADBDocumentTypeValue' -or $ff.Name -eq 'ADBContentGroup') {
+                   if($ff.Name -eq 'ADBDocumentTypeValue') { # -or $ff.Name -eq 'ADBContentGroup') {
                        $ff.Hidden = $True
                    }
                }
@@ -201,10 +202,10 @@ Apply-PnPProvisioningTemplate -Path "PNP\collabCT.pnp" -Handlers Fields, Content
 Remove-PnPContentTypeFromList -List "Final Documents" -ContentType "Document" -Web $web
 
 #This will remove duplicate fields
-Remove-PnPField -List "Documents" -Identity "Update ADB Country Document Type" -Force -Web $web
-Remove-PnPField -List "Documents" -Identity "Update ADB Document Type" -Force -Web $web
-Remove-PnPField -List "Documents" -Identity "Update ADB Project Document Type" -Force -Web $web
-Remove-PnPField -List "Documents" -Identity "Log Activity" -Force -Web $web
+#Remove-PnPField -List "Documents" -Identity "Update ADB Country Document Type" -Force -Web $web
+#Remove-PnPField -List "Documents" -Identity "Update ADB Document Type" -Force -Web $web
+#Remove-PnPField -List "Documents" -Identity "Update ADB Project Document Type" -Force -Web $web
+#Remove-PnPField -List "Documents" -Identity "Log Activity" -Force -Web $web
 
 echo "END: APPLY CONTENTTYPES"
 
