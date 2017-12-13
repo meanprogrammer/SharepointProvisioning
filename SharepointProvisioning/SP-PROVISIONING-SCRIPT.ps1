@@ -1,10 +1,10 @@
 echo "BEGIN SITE PROVISIONING"
 #Set-PnPTraceLog -On -Level Debug
-Set-PnPTraceLog -On -LogFile traceoutput.txt -Level Debug
+Set-PnPTraceLog -On -LogFile traceoutput.txt -Level Error
 
 
 #For Dev Purpose only
-#$PlainPassword = "Verbinden1"
+#$PlainPassword = "plainpassword"
 #$SecurePassword = $PlainPassword | ConvertTo-SecureString -AsPlainText -Force
 #$UserName = "vdudan@adbdev.onmicrosoft.com"
 #$credentials = New-Object System.Management.Automation.PSCredential -ArgumentList $UserName, $SecurePassword
@@ -15,13 +15,12 @@ $credentials = Get-Credential;
 
 #variables
 $tenant = "adbdev";
-$sourceSite = "/teams/template_collab";
-#$sourceSite = "/sites/TeamCollaborationWorkspace";
+$sourceSite = "/teams/template_pnp";
 $sourceWebUrl = "https://{0}.sharepoint.com{1}" -f $tenant, $sourceSite;
 
 #TODO: Replace with title and alias of website 
-$title = "foo188"
-$alias = "foo188"
+$title = ""
+$alias = ""
 #TODO: Replace with title and alias of website
 
 #Variables
@@ -32,10 +31,9 @@ $context = $null
 
 
 #Flags: True to generate template
-$getAllTemplate = $true;
-$getContentTypeTemplate = $true;
-$getNavigationTemplate = $true;
-$getContentTemplate = $true;
+$getAllTemplate = $True;
+$getNavigationTemplate = $True;
+$getContentTemplate = $True;
 #Flags: True to generate template
 
 
@@ -61,48 +59,20 @@ echo 'START: GET TEMPLATE'
 #it will generate the template, else it will skip the generation
 #and will assume that the template already exist
 if($getAllTemplate -eq $True) {
-    Get-PnPProvisioningTemplate -Out "PNP\Complete.pnp" -Force -PersistBrandingFiles -PersistPublishingFiles -IncludeNativePublishingFiles -Handlers All -ExcludeHandlers ComposedLook -SkipVersionCheck  
+    Get-PnPProvisioningTemplate -Out "PNP\Complete.xml" -Force -PersistBrandingFiles -PersistPublishingFiles -IncludeNativePublishingFiles -Web $sourceWeb
+
 } else {
     echo "SKIPPED GET TEMPLATE"
 }
+
 echo 'END: GET TEMPLATE'
-
-#if the $getContentTypeTemplate is set to true 
-#it will generate the template, else it will skip the generation
-#and will assume that the template already exist
-echo "START: GETTING CONTENTTYPES"
-if($getContentTypeTemplate -eq $True) {
-    #Get the field, content types and list template and assign them to variable 
-    #for in memory modification
-    $tpl = Get-PnPProvisioningTemplate -OutputInstance  -SkipVersionCheck -Handlers Fields, ContentTypes, Lists -Web $sourceWeb 
-    $contentTypes = $tpl.ContentTypes
-    foreach($ct in $contentTypes){              
-           if($ct.Name -eq 'ADB Document' -Or $ct.Name -eq 'ADB Country Document' -Or $ct.Name -eq 'ADB Project Document') {
-               #load field reference
-               $fields = $ct.FieldRefs
-               foreach($ff in $fields) 
-               {
-                   #set the field to Hidden
-                   if($ff.Name -eq 'ADBDocumentTypeValue') { # -or $ff.Name -eq 'ADBContentGroup') {
-                       $ff.Hidden = $True
-                   }
-               }
-           }
-    }
-    #after the in memory modification, save it to a template file
-    Save-PnPProvisioningTemplate -InputInstance $tpl -Force -Out "PNP\collabCT.pnp"
-
-} else {
-    echo "SKIPPED GET CONTENT TYPE TEMPLATE"
-}
-echo "END: GETTING CONTENTTYPES"
 
 #if the $getNavigationTemplate is set to true 
 #it will generate the template, else it will skip the generation
 #and will assume that the template already exist
 echo "START: GETTING NAVIGATION"
 if($getNavigationTemplate -eq $True) {
-    Get-PnPProvisioningTemplate -Force -Out "PNP\collabNAV.pnp" -Handlers Navigation  -SkipVersionCheck -Web $sourceWeb
+    Get-PnPProvisioningTemplate -Force -Out "PNP\collabNAV.xml" -Handlers Navigation -Web $sourceWeb
 } else {
     echo "SKIPPED GET NAVIGATION TEMPLATE"
 }
@@ -113,7 +83,7 @@ echo "END: GETTING NAVIGATION"
 #and will assume that the template already exist
 echo "START: GETTING HOMEPAGE"
 if($getContentTemplate -eq $True) {
-    Get-PnPProvisioningTemplate -Force -Out "PNP\collabPP.pnp" -Handlers Pages, PageContents  -SkipVersionCheck -Web $sourceWeb
+    Get-PnPProvisioningTemplate -Force -Out "PNP\collabPP.xml" -Handlers Pages, PageContents -Web $sourceWeb
 } else {
     echo "SKIPPED GET CONTENT TEMPLATE"
 }
@@ -121,13 +91,6 @@ echo "END: GETTING HOMEPAGE"
 
 #Create the provisioned site
 $targetWebUrl = New-PnPSite -Type TeamSite -Title $title -Alias $alias 
-
-DO
-{
-    Write-Host "Waiting...   $targetWebUrl"
-    Start-Sleep -Seconds 5
-} While ($targetWebUrl -eq $null)
-
 
 #disconnect from the source website
 Disconnect-PnPOnline
@@ -191,27 +154,147 @@ echo "END: ADD USER AS OWNER TO TARGET"
 
 echo "START: APPLY TEMPLATE"
 #Apply the template to the target site
-Apply-PnPProvisioningTemplate -Path "PNP\Complete.pnp" -Handlers All -ExcludeHandlers ComposedLook 
+Apply-PnPProvisioningTemplate -Path "PNP\Complete.xml" -Web $web
 echo "END: APPLY TEMPLATE"
 
 echo "START: APPLY CONTENTTYPES"
-#Apply the content types to the target site
-Apply-PnPProvisioningTemplate -Path "PNP\collabCT.pnp" -Handlers Fields, ContentTypes, Lists -Web $web
-
 #Removes the Document content type from the "Final Documents"
 Remove-PnPContentTypeFromList -List "Final Documents" -ContentType "Document" -Web $web
 
+$finalDocs = Get-PnPList -Identity "FinalDocs"
+$context.Load($finalDocs)
+$context.ExecuteQuery()
+
+$contentTypes = $finalDocs.ContentTypes
+$context.Load($contentTypes)
+$context.ExecuteQuery()
+
+    
+foreach($ct in $contentTypes){        
+           # echo $ct.Name      
+           if($ct.Name -eq 'ADB Document' -Or $ct.Name -eq 'ADB Country Document' -Or $ct.Name -eq 'ADB Project Document') {
+               #load field reference
+               $fields = $ct.FieldLinks
+               $context.Load($fields)
+               $context.ExecuteQuery()
+               foreach($ff in $fields) 
+               {
+                   if(
+                   $ff.Name -eq 'ADBDocumentTypeValue' -or 
+                   $ff.Name -eq 'ADBContentGroup'
+                   ) 
+                   {
+                       $ff.Hidden = $True
+                   }
+
+                   if(
+                   $ff.Name -eq 'Title' -or 
+                   $ff.Name -eq 'ADBAuthors' -or 
+                   $ff.Name -eq 'ADBDepartmentOwner'-or 
+                   $ff.Name -eq 'ADBDocumentSecurity'-or 
+                   $ff.Name -eq 'ADBDocumentLanguage'-or 
+                   $ff.Name -eq 'ADBSourceLink'-or 
+                   $ff.Name -eq 'ADBCirculatedLink'               
+                   )                   
+                   {
+                       $ff.Required = $True
+                   }
+               }
+               $ct.Update($false)
+               $context.ExecuteQuery()
+           }
+
+           if($ct.Name -eq 'ADB Document') {
+               #load field reference
+               $fields = $ct.FieldLinks
+               $context.Load($fields)
+               $context.ExecuteQuery()
+               foreach($ff in $fields) 
+               {
+                   if($ff.Name -eq 'ADBDocumentType')                   
+                   {
+                       $ff.Required = $True
+                   }
+               }
+               $ct.Update($false)
+               $context.ExecuteQuery()
+           }
+
+           if($ct.Name -eq 'ADB Country Document') {
+               #load field reference
+               $fields = $ct.FieldLinks
+               $context.Load($fields)
+               $context.ExecuteQuery()
+               foreach($ff in $fields) 
+               {
+                   if($ff.Name -eq 'ADBCountryDocumentType' -or $ff.Name -eq 'ADBCountry')                   
+                   {
+                       $ff.Required = $True
+                   }
+               }
+               $ct.Update($false)
+               $context.ExecuteQuery()
+           }
+
+            if($ct.Name -eq 'ADB Project Document') {
+               #load field reference
+               $fields = $ct.FieldLinks
+               $context.Load($fields)
+               $context.ExecuteQuery()
+               foreach($ff in $fields) 
+               {
+                   if($ff.Name -eq 'ADBProjectDocumentType' -or $ff.Name -eq 'ADBCountry' -or $ff.Name -eq 'ADBSector' -or $ff.Name -eq 'ADBProject')             
+                   {
+                       $ff.Required = $True
+                   }
+               }
+               $ct.Update($false)
+               $context.ExecuteQuery()
+           }
+}
+
+$documents = Get-PnPList -Identity "Documents"
+$context.Load($documents)
+$context.ExecuteQuery()
+
+$contentTypes = $documents.ContentTypes
+$context.Load($contentTypes)
+$context.ExecuteQuery()
+
+foreach($ct in $contentTypes){        
+           # echo $ct.Name      
+           if($ct.Name -eq 'ADB Document' -Or $ct.Name -eq 'ADB Country Document' -Or $ct.Name -eq 'ADB Project Document') {
+               #load field reference
+               $fields = $ct.FieldLinks
+               $context.Load($fields)
+               $context.ExecuteQuery()
+               foreach($ff in $fields) 
+               {
+                   if(
+                   $ff.Name -eq 'ADBDocumentTypeValue' -or 
+                   $ff.Name -eq 'ADBContentGroup'
+                   ) 
+                   {
+                       $ff.Hidden = $True
+                   }
+               }
+               $ct.Update($false)
+               $context.ExecuteQuery()
+           }
+
+           
+}
+
 #This will remove duplicate fields
-#Remove-PnPField -List "Documents" -Identity "Update ADB Country Document Type" -Force -Web $web
-#Remove-PnPField -List "Documents" -Identity "Update ADB Document Type" -Force -Web $web
-#Remove-PnPField -List "Documents" -Identity "Update ADB Project Document Type" -Force -Web $web
-#Remove-PnPField -List "Documents" -Identity "Log Activity" -Force -Web $web
+Remove-PnPField -List "Documents" -Identity "Update ADB Country Document Type" -Force -Web $web
+Remove-PnPField -List "Documents" -Identity "Update ADB Document Type" -Force -Web $web
+Remove-PnPField -List "Documents" -Identity "Update ADB Project Document Type" -Force -Web $web
 
 echo "END: APPLY CONTENTTYPES"
 
 echo "START: APPLY NAVIGATION"
 #Apply the Navigation to the target website
-Apply-PnPProvisioningTemplate -Path "PNP\collabNAV.pnp" -ClearNavigation -Handlers Navigation -Web $web
+Apply-PnPProvisioningTemplate -Path "PNP\collabNAV.xml" -ClearNavigation -Handlers Navigation -Web $web
 echo "END: APPLY NAVIGATION"
 
 echo "START: APPLY HOMEPAGE"
@@ -219,7 +302,7 @@ echo "START: APPLY HOMEPAGE"
 Remove-PnPFile -SiteRelativeUrl "SitePages/Home.aspx" -Force -Web $web
 
 #Apply the Pages template
-Apply-PnPProvisioningTemplate -Path "PNP\collabPP.pnp" -Handlers Pages, PageContents -Web $web
+Apply-PnPProvisioningTemplate -Path "PNP\collabPP.xml" -Handlers  ComposedLook, Pages, PageContents -Web $web
 
 #adds the News webpart to the homepage
 $page = Get-PnPClientSidePage -Identity "Home.aspx" -Web $web
@@ -232,7 +315,7 @@ Set-PnPTenantSite -Url $targetWebUrl -NoScriptSite:$true
 echo "END: ENABLE NOSCRIPT"
 
 echo "END HOMEPAGE"
-
+#>
 #Updates the workflow references
 echo "START: UPDATE WORKFLOW REFERENCES"
 
@@ -269,10 +352,8 @@ $wfh = $web.Lists.GetByTitle("Workflow History");
 $wft = $web.Lists.GetByTitle("Update Document Type Workflow Tasks")
 
 #Gets a reference to the Workflow history task
-$dwt = $web.Lists.GetByTitle("Workflow Tasks");
 $context.Load($wfh)
 $context.Load($wft)
-$context.Load($dwt)
 $context.ExecuteQuery()
 
 #Loop through all the subscription and
@@ -293,18 +374,52 @@ foreach ($s in $subscriptions)
         $s.SetProperty("FormData", "")
         $subscriptionService.PublishSubscriptionForList($s, $documents.Id)
     } 
-    else
-    {
-        $s.SetProperty("HistoryListId", $wfh.Id)
-        $s.SetProperty("TaskListId", $dwt.Id)
-        $s.SetProperty("FormData", "")
-        $subscriptionService.PublishSubscriptionForList($s, $documents.Id)
-    }
 }
 $context.ExecuteQuery()
 
 echo "END: UPDATE WORKFLOW REFERENCES"
 
+echo "START: UPDATE PERMISSIONS"
+
+$context.Load($web.RoleDefinitions)
+$context.ExecuteQuery()
+
+foreach($rd in $web.RoleDefinitions){ 
+    if($rd.Name -eq "Edit") 
+    {
+        $oldBp = $rd.BasePermissions;
+        $oldBp.Clear([Microsoft.SharePoint.Client.PermissionKind]::CreateSSCSite)
+        $rd.BasePermissions = New-Object Microsoft.SharePoint.Client.BasePermissions
+
+        $rd.BasePermissions = $oldBp
+        $rd.Update()
+    }
+
+     if($rd.Name -eq "Contribute") 
+    {
+        $oldBp = $rd.BasePermissions;
+        $oldBp.Clear([Microsoft.SharePoint.Client.PermissionKind]::CreateSSCSite)
+        $oldBp.Clear([Microsoft.SharePoint.Client.PermissionKind]::DeleteListItems)
+        $oldBp.Clear([Microsoft.SharePoint.Client.PermissionKind]::DeleteVersions)
+        $rd.BasePermissions = New-Object Microsoft.SharePoint.Client.BasePermissions
+
+        $rd.BasePermissions = $oldBp
+        $rd.Update()
+    }
+
+
+    $context.ExecuteQuery()
+}
+
+
+echo "END: UPDATE PERMISSIONS"
+
+echo "START: REMOVE HOME BANNER"
+$retval = Get-PnPFile -Url "SitePages/Home.aspx" -AsListItem -Web $web
+
+$x = Set-PnPListItem -List "SitePages" -Identity $retval.Id -Values @{"PageLayoutType"="Home"} -Web $web
+echo "END: REMOVE HOME BANNER"
+<#
 $setHome = $FALSE;
 
 #this sets the PageLayoutType of the Home.aspx
@@ -318,10 +433,10 @@ do {
         $context.ExecuteQuery()
 
         echo "get list item"
-        $retval = Get-PnPFile -Url "SitePages/Home.aspx" -AsListItem -Web $web -ErrorAction SilentlyContinue #Get-PnPListItem -List "SitePages" #-Query  "<View><Query><Where><Eq><FieldRef Name='Title'/><Value Type='Text'>Home</Value></Eq></Where></Query></View>"
+        $retval = Get-PnPFile -Url "SitePages/Home.aspx" -AsListItem -Web $web #Get-PnPListItem -List "SitePages" #-Query  "<View><Query><Where><Eq><FieldRef Name='Title'/><Value Type='Text'>Home</Value></Eq></Where></Query></View>"
         
         echo "set type to home"
-        Set-PnPListItem -List "SitePages" -Identity $retval.Id -Values @{"PageLayoutType"="Home"} -Web $web -ErrorAction SilentlyContinue
+        Set-PnPListItem -List "SitePages" -Identity $retval.Id -Values @{"PageLayoutType"="Home"} -Web $web -ErrorAction Stop
         echo "set type to home"
         $setHome = $TRUE;
     }   
@@ -332,7 +447,7 @@ do {
 
 } While($setHome -eq $FALSE)
 echo "exited loop"
-
+#>
 #disconnect
 Disconnect-PnPOnline
 #exit script
