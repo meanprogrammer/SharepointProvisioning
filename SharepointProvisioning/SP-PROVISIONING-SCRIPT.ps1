@@ -4,14 +4,14 @@ Set-PnPTraceLog -On -LogFile traceoutput.txt -Level Error
 
 
 #For Dev Purpose only
-#$PlainPassword = "plainpassword"
-#$SecurePassword = $PlainPassword | ConvertTo-SecureString -AsPlainText -Force
-#$UserName = "vdudan@adbdev.onmicrosoft.com"
-#$credentials = New-Object System.Management.Automation.PSCredential -ArgumentList $UserName, $SecurePassword
+$PlainPassword = "Verbinden1"
+$SecurePassword = $PlainPassword | ConvertTo-SecureString -AsPlainText -Force
+$UserName = "vdudan@adbdev.onmicrosoft.com"
+$credentials = New-Object System.Management.Automation.PSCredential -ArgumentList $UserName, $SecurePassword
 #For Dev Purpose only
 
 #Get the credential for the execution of script
-$credentials = Get-Credential;
+#$credentials = Get-Credential;
 
 #variables
 $tenant = "adbdev";
@@ -19,8 +19,8 @@ $sourceSite = "/teams/template_pnp";
 $sourceWebUrl = "https://{0}.sharepoint.com{1}" -f $tenant, $sourceSite;
 
 #TODO: Replace with title and alias of website 
-$title = ""
-$alias = ""
+$title = "foo241"
+$alias = "foo241"
 #TODO: Replace with title and alias of website
 
 #Variables
@@ -92,6 +92,8 @@ echo "END: GETTING HOMEPAGE"
 #Create the provisioned site
 $targetWebUrl = New-PnPSite -Type TeamSite -Title $title -Alias $alias 
 
+Start-Sleep -Seconds 60
+
 #disconnect from the source website
 Disconnect-PnPOnline
 
@@ -161,6 +163,40 @@ echo "START: APPLY CONTENTTYPES"
 #Removes the Document content type from the "Final Documents"
 Remove-PnPContentTypeFromList -List "Final Documents" -ContentType "Document" -Web $web
 
+echo "START: ADDING CONTENT GROUP"
+
+$listToUpdate = @('Documents','Final Documents','Review and Approval Tasks','Team Tasks','Calendar')
+$contentGroupField=$web.Fields.GetByInternalNameOrTitle("ADBContentGroup")
+$context.Load($contentGroupField)
+$context.ExecuteQuery()
+
+Add-PnPField -List "SitePages" -Field $contentGroupField
+
+foreach($list in $listToUpdate) {
+   
+    $li=$context.Web.Lists.GetByTitle($list)
+    $context.Load($li)
+    $context.Load($li.ContentTypes)
+    $context.ExecuteQuery()
+
+    foreach($ct in $li.ContentTypes) 
+    {
+        echo $ct.Name
+        if($ct.Name -eq 'ADB Document' -or $ct.Name -eq 'ADB Project Document' -or $ct.Name -eq 'ADB Country Document' -or  $ct.Name -eq 'Task' -or $ct.Name -eq 'Event')
+        {
+
+        $link = new-object Microsoft.SharePoint.Client.FieldLinkCreationInformation
+        $link.Field = $contentGroupField
+        $ct.FieldLinks.Add($link)
+        $ct.Update($false)
+        $li.Update()
+        $context.ExecuteQuery()
+        }
+    }
+}
+
+echo "END: ADDING CONTENT GROUP"
+
 $finalDocs = Get-PnPList -Identity "FinalDocs"
 $context.Load($finalDocs)
 $context.ExecuteQuery()
@@ -172,7 +208,7 @@ $context.ExecuteQuery()
     
 foreach($ct in $contentTypes){        
            # echo $ct.Name      
-           if($ct.Name -eq 'ADB Document' -Or $ct.Name -eq 'ADB Country Document' -Or $ct.Name -eq 'ADB Project Document') {
+           if($ct.Name -eq 'ADB Document' -Or $ct.Name -eq 'ADB Country Document' -Or $ct.Name -eq 'ADB Project Document' -or  $ct.Name -eq 'Task' -or $ct.Name -eq 'Event') {
                #load field reference
                $fields = $ct.FieldLinks
                $context.Load($fields)
