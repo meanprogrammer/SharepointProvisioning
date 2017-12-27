@@ -19,8 +19,8 @@ $sourceSite = "/teams/template_pnp";
 $sourceWebUrl = "https://{0}.sharepoint.com{1}" -f $tenant, $sourceSite;
 
 #TODO: Replace with title and alias of website 
-$title = "foo241"
-$alias = "foo241"
+$title = ""
+$alias = ""
 #TODO: Replace with title and alias of website
 
 #Variables
@@ -163,6 +163,13 @@ echo "START: APPLY CONTENTTYPES"
 #Removes the Document content type from the "Final Documents"
 Remove-PnPContentTypeFromList -List "Final Documents" -ContentType "Document" -Web $web
 
+#This will remove duplicate fields
+Remove-PnPField -List "Documents" -Identity "Update ADB Country Document Type" -Force -Web $web
+Remove-PnPField -List "Documents" -Identity "Update ADB Document Type" -Force -Web $web
+Remove-PnPField -List "Documents" -Identity "Update ADB Project Document Type" -Force -Web $web
+
+echo "END: APPLY CONTENTTYPES"
+
 echo "START: ADDING CONTENT GROUP"
 
 $listToUpdate = @('Documents','Final Documents','Review and Approval Tasks','Team Tasks','Calendar')
@@ -197,6 +204,8 @@ foreach($list in $listToUpdate) {
 
 echo "END: ADDING CONTENT GROUP"
 
+echo "START: HIDING Content Group FROM Final Docs"
+
 $finalDocs = Get-PnPList -Identity "FinalDocs"
 $context.Load($finalDocs)
 $context.ExecuteQuery()
@@ -208,7 +217,7 @@ $context.ExecuteQuery()
     
 foreach($ct in $contentTypes){        
            # echo $ct.Name      
-           if($ct.Name -eq 'ADB Document' -Or $ct.Name -eq 'ADB Country Document' -Or $ct.Name -eq 'ADB Project Document' -or  $ct.Name -eq 'Task' -or $ct.Name -eq 'Event') {
+           if($ct.Name -eq 'ADB Document' -Or $ct.Name -eq 'ADB Country Document' -Or $ct.Name -eq 'ADB Project Document') {
                #load field reference
                $fields = $ct.FieldLinks
                $context.Load($fields)
@@ -289,6 +298,10 @@ foreach($ct in $contentTypes){
            }
 }
 
+echo "END: HIDING Content Group FROM Final Docs"
+
+echo "START: HIDING Content Group FROM Documents"
+
 $documents = Get-PnPList -Identity "Documents"
 $context.Load($documents)
 $context.ExecuteQuery()
@@ -321,12 +334,153 @@ foreach($ct in $contentTypes){
            
 }
 
-#This will remove duplicate fields
-Remove-PnPField -List "Documents" -Identity "Update ADB Country Document Type" -Force -Web $web
-Remove-PnPField -List "Documents" -Identity "Update ADB Document Type" -Force -Web $web
-Remove-PnPField -List "Documents" -Identity "Update ADB Project Document Type" -Force -Web $web
+echo "END: HIDING Content Group FROM Documents"
 
-echo "END: APPLY CONTENTTYPES"
+echo "START: HIDING Content Group FROM Review and Approval Tasks"
+
+$reviewApprovalTasks = Get-PnPList -Identity "Review and Approval Tasks"
+$context.Load($reviewApprovalTasks)
+$context.ExecuteQuery()
+
+$contentTypes = $reviewApprovalTasks.ContentTypes
+$context.Load($contentTypes)
+$context.ExecuteQuery()
+
+foreach($ct in $contentTypes){        
+           # echo $ct.Name      
+           if($ct.Name -eq 'Task') {
+               #load field reference
+               $fields = $ct.FieldLinks
+               $context.Load($fields)
+               $context.ExecuteQuery()
+               foreach($ff in $fields) 
+               {
+                   if(
+                   $ff.Name -eq 'ADBContentGroup'
+                   ) 
+                   {
+                       $ff.Hidden = $True
+                   }
+               }
+               $ct.Update($false)
+               $context.ExecuteQuery()
+           }
+
+           
+}
+
+echo "END: HIDING Content Group FROM Review and Approval Tasks"
+
+echo "START: HIDING Content Group FROM Team Tasks"
+
+$teamTasks = Get-PnPList -Identity "Team Tasks"
+$context.Load($teamTasks)
+$context.ExecuteQuery()
+
+$contentTypes = $teamTasks.ContentTypes
+$context.Load($contentTypes)
+$context.ExecuteQuery()
+
+foreach($ct in $contentTypes){        
+           # echo $ct.Name      
+           if($ct.Name -eq 'Task') {
+               #load field reference
+               $fields = $ct.FieldLinks
+               $context.Load($fields)
+               $context.ExecuteQuery()
+               foreach($ff in $fields) 
+               {
+                   if(
+                   $ff.Name -eq 'ADBContentGroup'
+                   ) 
+                   {
+                       $ff.Hidden = $True
+                   }
+               }
+               $ct.Update($false)
+               $context.ExecuteQuery()
+           }
+
+           
+}
+
+echo "END: HIDING Content Group FROM Team Tasks"
+
+echo "START: HIDING Content Group FROM Calendar"
+
+$calendar = Get-PnPList -Identity "Calendar"
+$context.Load($calendar)
+$context.ExecuteQuery()
+
+$contentTypes = $calendar.ContentTypes
+$context.Load($contentTypes)
+$context.ExecuteQuery()
+
+foreach($ct in $contentTypes){        
+           # echo $ct.Name      
+           if($ct.Name -eq 'Event') {
+               #load field reference
+               $fields = $ct.FieldLinks
+               $context.Load($fields)
+               $context.ExecuteQuery()
+               foreach($ff in $fields) 
+               {
+                   if(
+                   $ff.Name -eq 'ADBContentGroup'
+                   ) 
+                   {
+                       $ff.Hidden = $True
+                   }
+               }
+               $ct.Update($false)
+               $context.ExecuteQuery()
+           }
+
+           
+}
+
+echo "END: HIDING Content Group FROM Calendar"
+
+echo "START: HIDING Content Group FROM Site Pages"
+
+#$sPages = Get-PnPList -Identity "SitePages"
+
+$ctx = Get-PnPContext
+$web2 = $ctx.Web
+$ctx.Load($web2)
+$ctx.Load($web2.Lists)
+$sPages = $web2.Lists.GetByTitle("Site Pages")
+$spContentTypes = $sPages.ContentTypes
+$ctx.Load($sPages)
+$ctx.Load($spContentTypes)
+$ctx.ExecuteQuery()
+
+
+
+foreach($ct2 in $spContentTypes){        
+           # echo $ct.Name      
+           if($ct2.Name -eq 'Wiki Page') {
+               #load field reference
+               $fields = $ct2.FieldLinks
+               $ctx.Load($fields)
+               $ctx.ExecuteQuery()
+               foreach($fl in $fields) 
+               {
+                   if($fl.Name -eq 'ADBContentGroup') 
+                   {
+                        $fl.DeleteObject();
+                        $ct2.Update($false)
+                        $ctx.ExecuteQuery()
+                        break
+                   }
+               }
+               
+           }
+}
+
+echo "END: HIDING Content Group FROM Site Pages"
+
+
 
 echo "START: APPLY NAVIGATION"
 #Apply the Navigation to the target website
