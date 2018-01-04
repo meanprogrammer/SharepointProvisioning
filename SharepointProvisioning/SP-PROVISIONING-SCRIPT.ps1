@@ -1,3 +1,4 @@
+
 echo "BEGIN SITE PROVISIONING"
 #Set-PnPTraceLog -On -Level Debug
 Set-PnPTraceLog -On -LogFile traceoutput.txt -Level Error
@@ -19,8 +20,8 @@ $sourceSite = "/teams/template_pnp";
 $sourceWebUrl = "https://{0}.sharepoint.com{1}" -f $tenant, $sourceSite;
 
 #TODO: Replace with title and alias of website 
-$title = ""
-$alias = ""
+$title = "foo286"
+$alias = "foo286"
 #TODO: Replace with title and alias of website
 
 #Variables
@@ -31,9 +32,9 @@ $context = $null
 
 
 #Flags: True to generate template
-$getAllTemplate = $True;
-$getNavigationTemplate = $True;
-$getContentTemplate = $True;
+$getAllTemplate = $False;
+$getNavigationTemplate = $False;
+$getContentTemplate = $False;
 #Flags: True to generate template
 
 
@@ -89,8 +90,34 @@ if($getContentTemplate -eq $True) {
 }
 echo "END: GETTING HOMEPAGE"
 
-#Create the provisioned site
-$targetWebUrl = New-PnPSite -Type TeamSite -Title $title -Alias $alias 
+echo "START: CHECK IF SITE EXISTS"
+
+$targetWebUrl = "https://{0}.sharepoint.com/teams/{1}" -f $tenant, $title
+
+$shouldCreate = $False
+
+Try
+{
+    Get-PnPTenantSite -url $targetWebUrl -Detailed -ErrorAction Stop
+}
+catch
+{
+
+    $shouldCreate = $_.Exception.Message -like '*Cannot get site*'
+}
+
+echo $shouldCreate
+
+echo "end: CHECK IF SITE EXISTS"
+
+
+if($shouldCreate -eq $True) 
+{
+    #Create the provisioned site
+    $targetWebUrl = New-PnPSite -Type TeamSite -Title $title -Alias $alias 
+}
+
+echo $targetWebUrl
 
 Start-Sleep -Seconds 60
 
@@ -98,24 +125,29 @@ Start-Sleep -Seconds 60
 Disconnect-PnPOnline
 
 #connect to the target website
-Connect-PnPOnline -Url $targetWebUrl -Credentials $credentials;
+Connect-PnPOnline -Url $targetWebUrl -Credentials $credentials
+
+Start-Sleep -Seconds 60
 
 #get the context, web, lists of the target website
 $context = Get-PnPContext
+
 $web = $context.Web
 $context.Load($web)
 $context.ExecuteQuery()
+
 $context.Load($web.Lists)
 $context.ExecuteQuery()
 
 #ensute that site asset library is created
 $web.Lists.EnsureSiteAssetsLibrary()
-$context.ExecuteQuery()
+#$context.ExecuteQuery()
 
 #ensute that site pages library is created
 $web.Lists.EnsureSitePagesLibrary()
 
 $context.ExecuteQuery()
+
 
 echo "START: TEST IF TARGET IS ACTIVE."
 $status = $null
@@ -176,6 +208,120 @@ $listToUpdate = @('Documents','Final Documents','Review and Approval Tasks','Tea
 $contentGroupField=$web.Fields.GetByInternalNameOrTitle("ADBContentGroup")
 $context.Load($contentGroupField)
 $context.ExecuteQuery()
+<#
+addContentGroup('Documents', $context)
+addContentGroup('Final Documents', $context)
+addContentGroup('Review and Approval Tasks', $context)
+addContentGroup('Team Tasks', $context)
+addContentGroup('Calendar', $context)
+
+
+$li=$context.Web.Lists.GetByTitle('Final Documents')
+    $context.Load($li)
+    $context.Load($li.ContentTypes)
+    $context.ExecuteQuery()
+
+    foreach($ct in $li.ContentTypes) 
+    {
+        echo $ct.Name
+        if($ct.Name -eq 'ADB Document' -or $ct.Name -eq 'ADB Project Document' -or $ct.Name -eq 'ADB Country Document')
+        {
+
+        $link = new-object Microsoft.SharePoint.Client.FieldLinkCreationInformation
+        $link.Field = $contentGroupField
+        $ct.FieldLinks.Add($link)
+        $ct.Update($false)
+        $li.Update()
+        $context.ExecuteQuery()
+        }
+    }
+
+
+    $li=$context.Web.Lists.GetByTitle('Documents')
+    $context.Load($li)
+    $context.Load($li.ContentTypes)
+    $context.ExecuteQuery()
+
+    foreach($ct in $li.ContentTypes) 
+    {
+        echo $ct.Name
+        if($ct.Name -eq 'ADB Document' -or $ct.Name -eq 'ADB Project Document' -or $ct.Name -eq 'ADB Country Document')
+        {
+
+        $link = new-object Microsoft.SharePoint.Client.FieldLinkCreationInformation
+        $link.Field = $contentGroupField
+        $ct.FieldLinks.Add($link)
+        $ct.Update($false)
+        $li.Update()
+        $context.ExecuteQuery()
+        }
+    }
+
+
+    
+
+    $li=$context.Web.Lists.GetByTitle('Review and Approval Tasks')
+    $context.Load($li)
+    $context.Load($li.ContentTypes)
+    $context.ExecuteQuery()
+
+    foreach($ct in $li.ContentTypes) 
+    {
+        echo $ct.Name
+        if($ct.Name -eq 'Task')
+        {
+
+        $link = new-object Microsoft.SharePoint.Client.FieldLinkCreationInformation
+        $link.Field = $contentGroupField
+        $ct.FieldLinks.Add($link)
+        $ct.Update($false)
+        $li.Update()
+        $context.ExecuteQuery()
+        }
+    }
+
+             $li=$context.Web.Lists.GetByTitle('Team Tasks')
+    $context.Load($li)
+    $context.Load($li.ContentTypes)
+    $context.ExecuteQuery()
+
+    foreach($ct in $li.ContentTypes) 
+    {
+        echo $ct.Name
+        if($ct.Name -eq 'Task')
+        {
+
+        $link = new-object Microsoft.SharePoint.Client.FieldLinkCreationInformation
+        $link.Field = $contentGroupField
+        $ct.FieldLinks.Add($link)
+        $ct.Update($false)
+        $li.Update()
+        $context.ExecuteQuery()
+        }
+    }
+
+             $li=$context.Web.Lists.GetByTitle('Calendar')
+    $context.Load($li)
+    $context.Load($li.ContentTypes)
+    $context.ExecuteQuery()
+
+    foreach($ct in $li.ContentTypes) 
+    {
+        echo $ct.Name
+        if($ct.Name -eq 'Event')
+        {
+
+        $link = new-object Microsoft.SharePoint.Client.FieldLinkCreationInformation
+        $link.Field = $contentGroupField
+        $ct.FieldLinks.Add($link)
+        $ct.Update($false)
+        $li.Update()
+        $context.ExecuteQuery()
+        }
+    }
+    #>
+
+
 
 Add-PnPField -List "SitePages" -Field $contentGroupField
 
@@ -196,10 +342,11 @@ foreach($list in $listToUpdate) {
         $link.Field = $contentGroupField
         $ct.FieldLinks.Add($link)
         $ct.Update($false)
-        $li.Update()
-        $context.ExecuteQuery()
+        #$li.Update()
+        
         }
     }
+    $context.ExecuteQuery()
 }
 
 echo "END: ADDING CONTENT GROUP"
