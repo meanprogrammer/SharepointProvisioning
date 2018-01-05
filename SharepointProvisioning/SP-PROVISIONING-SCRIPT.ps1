@@ -20,8 +20,8 @@ $sourceSite = "/teams/template_pnp";
 $sourceWebUrl = "https://{0}.sharepoint.com{1}" -f $tenant, $sourceSite;
 
 #TODO: Replace with title and alias of website 
-$title = "foo286"
-$alias = "foo286"
+$title = "foo302"
+$alias = "foo302"
 #TODO: Replace with title and alias of website
 
 #Variables
@@ -32,9 +32,9 @@ $context = $null
 
 
 #Flags: True to generate template
-$getAllTemplate = $False;
-$getNavigationTemplate = $False;
-$getContentTemplate = $False;
+$getAllTemplate = $True;
+$getNavigationTemplate = $True;
+$getContentTemplate = $True;
 #Flags: True to generate template
 
 
@@ -94,8 +94,8 @@ echo "START: CHECK IF SITE EXISTS"
 
 $targetWebUrl = "https://{0}.sharepoint.com/teams/{1}" -f $tenant, $title
 
-$shouldCreate = $False
-
+$shouldCreate = $True
+<#
 Try
 {
     Get-PnPTenantSite -url $targetWebUrl -Detailed -ErrorAction Stop
@@ -107,8 +107,8 @@ catch
 }
 
 echo $shouldCreate
-
-echo "end: CHECK IF SITE EXISTS"
+#>
+echo "END: CHECK IF SITE EXISTS"
 
 
 if($shouldCreate -eq $True) 
@@ -117,7 +117,6 @@ if($shouldCreate -eq $True)
     $targetWebUrl = New-PnPSite -Type TeamSite -Title $title -Alias $alias 
 }
 
-echo $targetWebUrl
 
 Start-Sleep -Seconds 60
 
@@ -135,17 +134,17 @@ $context = Get-PnPContext
 $web = $context.Web
 $context.Load($web)
 $context.ExecuteQuery()
-
 $context.Load($web.Lists)
+
 $context.ExecuteQuery()
+
 
 #ensute that site asset library is created
 $web.Lists.EnsureSiteAssetsLibrary()
-#$context.ExecuteQuery()
+$context.ExecuteQuery()
 
 #ensute that site pages library is created
 $web.Lists.EnsureSitePagesLibrary()
-
 $context.ExecuteQuery()
 
 
@@ -204,7 +203,7 @@ echo "END: APPLY CONTENTTYPES"
 
 echo "START: ADDING CONTENT GROUP"
 
-$listToUpdate = @('Documents','Final Documents','Review and Approval Tasks','Team Tasks','Calendar')
+$listToUpdate = @('Documents','Final Documents','Team Tasks','Calendar')
 $contentGroupField=$web.Fields.GetByInternalNameOrTitle("ADBContentGroup")
 $context.Load($contentGroupField)
 $context.ExecuteQuery()
@@ -329,12 +328,13 @@ foreach($list in $listToUpdate) {
    
     $li=$context.Web.Lists.GetByTitle($list)
     $context.Load($li)
+    $context.ExecuteQuery()
     $context.Load($li.ContentTypes)
     $context.ExecuteQuery()
 
     foreach($ct in $li.ContentTypes) 
     {
-        echo $ct.Name
+        echo $ct.Name 
         if($ct.Name -eq 'ADB Document' -or $ct.Name -eq 'ADB Project Document' -or $ct.Name -eq 'ADB Country Document' -or  $ct.Name -eq 'Task' -or $ct.Name -eq 'Event')
         {
 
@@ -342,11 +342,18 @@ foreach($list in $listToUpdate) {
         $link.Field = $contentGroupField
         $ct.FieldLinks.Add($link)
         $ct.Update($false)
-        #$li.Update()
-        
+
+            try{
+                $context.ExecuteQuery()
+            } 
+            catch
+            {
+                #swallow unknown error
+            }
         }
+
     }
-    $context.ExecuteQuery()
+    
 }
 
 echo "END: ADDING CONTENT GROUP"
@@ -483,6 +490,8 @@ foreach($ct in $contentTypes){
 
 echo "END: HIDING Content Group FROM Documents"
 
+<#
+
 echo "START: HIDING Content Group FROM Review and Approval Tasks"
 
 $reviewApprovalTasks = Get-PnPList -Identity "Review and Approval Tasks"
@@ -517,7 +526,7 @@ foreach($ct in $contentTypes){
 }
 
 echo "END: HIDING Content Group FROM Review and Approval Tasks"
-
+#>
 echo "START: HIDING Content Group FROM Team Tasks"
 
 $teamTasks = Get-PnPList -Identity "Team Tasks"
