@@ -20,8 +20,8 @@ $sourceSite = "/teams/template_pnp";
 $sourceWebUrl = "https://{0}.sharepoint.com{1}" -f $tenant, $sourceSite;
 
 #TODO: Replace with title and alias of website 
-$title = "foo302"
-$alias = "foo302"
+$title = ""
+$alias = ""
 #TODO: Replace with title and alias of website
 
 #Variables
@@ -95,27 +95,31 @@ echo "START: CHECK IF SITE EXISTS"
 $targetWebUrl = "https://{0}.sharepoint.com/teams/{1}" -f $tenant, $title
 
 $shouldCreate = $True
-<#
+
 Try
 {
-    Get-PnPTenantSite -url $targetWebUrl -Detailed -ErrorAction Stop
+    $existingSite = Get-PnPTenantSite -url $targetWebUrl -Detailed -ErrorAction Stop
+    if($existingSite -ne $null)
+    {
+        echo "Target site already exist. Will not continue."
+        Exit
+    }
 }
 catch
 {
-
-    $shouldCreate = $_.Exception.Message -like '*Cannot get site*'
+    #swallowing exception
+    echo $_.Exception.Message
 }
 
-echo $shouldCreate
-#>
+
+
 echo "END: CHECK IF SITE EXISTS"
 
 
-if($shouldCreate -eq $True) 
-{
-    #Create the provisioned site
-    $targetWebUrl = New-PnPSite -Type TeamSite -Title $title -Alias $alias 
-}
+
+#Create the provisioned site
+$targetWebUrl = New-PnPSite -Type TeamSite -Title $title -Alias $alias 
+
 
 
 Start-Sleep -Seconds 60
