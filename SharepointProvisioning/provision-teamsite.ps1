@@ -35,8 +35,238 @@ Function Connect-SPOSite
     }
 
 }
- 
 
+#Sets the field status if hidden or required
+Function SetFieldStatus
+{
+    Param(
+        [bool]$hidden = $false,
+        [bool]$required = $false,
+        [string]$listName,
+        [string[]]$contentTypes,
+        [string[]]$fields,
+        [Parameter(Mandatory=$True)]
+        [Microsoft.SharePoint.Client.ClientContext]$context
+    )
+    #load the list
+    $list = Get-PnPList -Identity $listName
+    $context.Load($list)
+    $context.ExecuteQuery()
+    #load the list content types    
+    $cts = $list.ContentTypes
+    $context.Load($cts)
+    $context.ExecuteQuery()
+
+    foreach($ct in $cts){        
+            #checks if the content types exist in the $contentTypes array
+            if($contentTypes -contains $ct.Name) {
+                #load field reference
+                $flinks = $ct.FieldLinks
+                $context.Load($flinks)
+                $context.ExecuteQuery()
+                #for each field links, if it exists on the fields array
+                #set the hidden and the required
+                foreach($ff in $flinks) 
+                {
+                    if($fields -contains $ff.Name){ 
+                        $ff.Hidden = $hidden
+                        $ff.Required = $Required
+                    }
+                }
+                #update the content type
+                $ct.Update($false)
+                $context.ExecuteQuery()
+            }         
+    }
+
+    
+}
+
+#adds the content group field to a list content type
+Function AddContentGroup
+{
+    Param(
+        [string]$listName,
+        [string[]]$contentTypes,
+        [string[]]$fields,
+        [Parameter(Mandatory=$True)]
+        [Microsoft.SharePoint.Client.ClientContext]$context
+    )   
+    #load the list
+    $li=$context.Web.Lists.GetByTitle($listName)
+    $context.Load($li)
+    $context.ExecuteQuery()
+    #load the list content types
+    $context.Load($li.ContentTypes)
+    $context.ExecuteQuery()
+
+    foreach($ct in $li.ContentTypes) 
+    {
+        #checks if the content types exist in the $contentTypes array
+        if($contentTypes -contains $ct.Name) 
+        {
+            #create instance of FieldLinkCreationInformation
+            $link = new-object Microsoft.SharePoint.Client.FieldLinkCreationInformation
+            #set field to content group
+            $link.Field = $contentGroupField
+            #add to field links
+            $ct.FieldLinks.Add($link)
+            #update the content type
+            $ct.Update($false)
+
+            try{
+                $context.ExecuteQuery()
+            } 
+            catch
+            {
+                $ErrorMessage = $_.Exception.Message
+                $FailedItem = $_.Exception.ItemName
+                echo "ERROR: $ErrorMessage $FailedItem"
+                #swallow unknown error
+            }
+        }
+
+    }
+}
+
+Function RemoveFieldLink
+{
+    Param(
+        [string]$listName,
+        [string]$contentType,
+        [string]$field,
+        [Parameter(Mandatory=$True)]
+        [Microsoft.SharePoint.Client.ClientContext]$context,
+        [Parameter(Mandatory=$True)]
+        [Microsoft.SharePoint.Client.Web]$web
+    )
+
+    $sPages = $web.Lists.GetByTitle($listName)
+    $spContentTypes = $sPages.ContentTypes
+    $context.Load($sPages)
+    $context.Load($spContentTypes)
+    $context.ExecuteQuery()
+
+    foreach($ct in $spContentTypes){        
+           # echo $ct.Name      
+           if($ct.Name -eq $contentType) {
+               #load field reference
+               $fields = $ct.FieldLinks
+               $context.Load($fields)
+               $context.ExecuteQuery()
+               foreach($fl in $fields) 
+               {
+                   if($fl.Name -eq $field) 
+                   {
+                        $fl.DeleteObject();
+                        $ct.Update($false)
+                        $context.ExecuteQuery()
+                        break
+                   }
+               }
+               
+           }
+    }   
+}
+
+Function UpdateWorkflowReferences
+{
+    Param(
+        [string]$listName,
+        [string]$workflowHistory,
+        [string]$workflowTask,
+        [string[]]$contentTypes,
+        [Parameter(Mandatory=$True)]
+        [Microsoft.SharePoint.Client.ClientContext]$context
+    )
+
+    #Gets the site of the target website
+    $site = $context.Site
+    $context.Load($site)
+    $context.ExecuteQuery()
+
+    #gets reference to the "Documents" document library
+    $list = $web.Lists.GetByTitle($listName)
+
+    $context.Load($list)
+    $context.ExecuteQuery()
+
+    #loads all workflow associations
+    $context.Load($list.WorkflowAssociations)
+    $context.ExecuteQuery()  
+
+    #Gets the WorkflowServicesManager instance
+    $servicesManager = New-Object Microsoft.SharePoint.Client.WorkflowServices.WorkflowServicesManager($context, $web)
+    #Gets the WorkflowSubscriptionService
+    $subscriptionService = $servicesManager.GetWorkflowSubscriptionService()
+    #List all the subscription
+    $subscriptions = $subscriptionService.EnumerateSubscriptionsByList($list.Id)
+
+    $context.Load($subscriptions)
+    $context.ExecuteQuery()
+
+    #Gets a reference to the Workflow history list
+    $wfh = $web.Lists.GetByTitle($workflowHistory)
+    $wft = $web.Lists.GetByTitle($workflowTask)
+
+    #Gets a reference to the Workflow history task
+    $context.Load($wfh)
+    $context.Load($wft)
+    $context.ExecuteQuery()
+
+    #Loop through all the subscription and
+    #set the HistoryListId and TaskListId
+    #and publish
+    foreach ($s in $subscriptions)
+    {
+        echo $s.Name
+        if ($contentTypes -contains $s.Name)
+        {
+            
+            $s.SetProperty("HistoryListId", $wfh.Id)
+            $s.SetProperty("TaskListId", $wft.Id)
+            $s.SetProperty("FormData", "")
+            $subscriptionService.PublishSubscriptionForList($s, $list.Id)
+        } 
+    }
+
+    $context.ExecuteQuery()
+}
+
+#removes permission from role definition
+Function RemoveFromPermission
+{
+    Param(
+        [string]$role,
+        [Microsoft.SharePoint.Client.PermissionKind[]]$permissionToRemove, 
+        [Parameter(Mandatory=$True)]
+        [Microsoft.SharePoint.Client.Web]$web,
+        [Parameter(Mandatory=$True)]
+        [Microsoft.SharePoint.Client.ClientContext]$context
+    )
+
+    #loads role definitions
+    $context.Load($web.RoleDefinitions)
+    $context.ExecuteQuery()
+
+    foreach($rd in $web.RoleDefinitions){ 
+        if($rd.Name -eq $role) 
+        {
+            $oldBp = $rd.BasePermissions
+            #remove each permission that is in the array
+            foreach ($permission in $permissionToRemove) {
+                $oldBp.Clear($permission)
+            }
+            $rd.BasePermissions = New-Object Microsoft.SharePoint.Client.BasePermissions
+            #assign the modified permission to the role definition BasePermissions
+            $rd.BasePermissions = $oldBp
+            $rd.Update()
+        }
+        $context.ExecuteQuery()
+    }
+}
+
+#End Functions
 
 echo "BEGIN SITE PROVISIONING"
 
@@ -44,7 +274,6 @@ echo "BEGIN SITE PROVISIONING"
 Set-PnPTraceLog -On -LogFile traceoutput.txt -Level Error
 
 #Set variables
-$sourceSite = "/teams/template_pnp";
 $sourceWebUrl = "https://{0}.sharepoint.com{1}" -f $tenant, $sourceSite;
 $sourceWeb = $null
 $sourceContext = $null
@@ -216,287 +445,41 @@ echo "END: APPLY CONTENTTYPES"
 
 echo "START: ADDING CONTENT GROUP"
 
-$listToUpdate = @('Documents','Final Documents','Team Tasks','Calendar')
 $contentGroupField=$web.Fields.GetByInternalNameOrTitle("ADBContentGroup")
 $context.Load($contentGroupField)
 $context.ExecuteQuery()
 
 Add-PnPField -List "SitePages" -Field $contentGroupField
 
-foreach($list in $listToUpdate) {
-   
-    $li=$context.Web.Lists.GetByTitle($list)
-    $context.Load($li)
-    $context.ExecuteQuery()
-    $context.Load($li.ContentTypes)
-    $context.ExecuteQuery()
-
-    foreach($ct in $li.ContentTypes) 
-    {
-        echo $ct.Name 
-        if($ct.Name -eq 'ADB Document' -or $ct.Name -eq 'ADB Project Document' -or $ct.Name -eq 'ADB Country Document' -or  $ct.Name -eq 'Task' -or $ct.Name -eq 'Event')
-        {
-
-        $link = new-object Microsoft.SharePoint.Client.FieldLinkCreationInformation
-        $link.Field = $contentGroupField
-        $ct.FieldLinks.Add($link)
-        $ct.Update($false)
-
-            try{
-                $context.ExecuteQuery()
-            } 
-            catch
-            {
-                #swallow unknown error
-            }
-        }
-
-    }
-    
-}
+AddContentGroup -listName "Documents" -contentTypes @('Document','ADB Document','ADB Project Document','ADB Country Document','Task','Event') -context $context
+AddContentGroup -listName "Final Documents" -contentTypes @('ADB Document','ADB Project Document','ADB Country Document','Task','Event') -context $context
+AddContentGroup -listName "Team Tasks" -contentTypes @('Task') -context $context
+AddContentGroup -listName "Calendar" -contentTypes @('Event') -context $context
 
 echo "END: ADDING CONTENT GROUP"
 
 echo "START: HIDING Content Group FROM Final Docs"
-
-$finalDocs = Get-PnPList -Identity "FinalDocs"
-$context.Load($finalDocs)
-$context.ExecuteQuery()
-
-$contentTypes = $finalDocs.ContentTypes
-$context.Load($contentTypes)
-$context.ExecuteQuery()
-
-    
-foreach($ct in $contentTypes){        
-           # echo $ct.Name      
-           if($ct.Name -eq 'ADB Document' -Or $ct.Name -eq 'ADB Country Document' -Or $ct.Name -eq 'ADB Project Document') {
-               #load field reference
-               $fields = $ct.FieldLinks
-               $context.Load($fields)
-               $context.ExecuteQuery()
-               foreach($ff in $fields) 
-               {
-                   if(
-                   $ff.Name -eq 'ADBDocumentTypeValue' -or 
-                   $ff.Name -eq 'ADBContentGroup'
-                   ) 
-                   {
-                       $ff.Hidden = $True
-                   }
-
-                   if(
-                   $ff.Name -eq 'Title' -or 
-                   $ff.Name -eq 'ADBAuthors' -or 
-                   $ff.Name -eq 'ADBDepartmentOwner'-or 
-                   $ff.Name -eq 'ADBDocumentSecurity'-or 
-                   $ff.Name -eq 'ADBDocumentLanguage'-or 
-                   $ff.Name -eq 'ADBSourceLink'-or 
-                   $ff.Name -eq 'ADBCirculatedLink'               
-                   )                   
-                   {
-                       $ff.Required = $True
-                   }
-               }
-               $ct.Update($false)
-               $context.ExecuteQuery()
-           }
-
-           if($ct.Name -eq 'ADB Document') {
-               #load field reference
-               $fields = $ct.FieldLinks
-               $context.Load($fields)
-               $context.ExecuteQuery()
-               foreach($ff in $fields) 
-               {
-                   if($ff.Name -eq 'ADBDocumentType')                   
-                   {
-                       $ff.Required = $True
-                   }
-               }
-               $ct.Update($false)
-               $context.ExecuteQuery()
-           }
-
-           if($ct.Name -eq 'ADB Country Document') {
-               #load field reference
-               $fields = $ct.FieldLinks
-               $context.Load($fields)
-               $context.ExecuteQuery()
-               foreach($ff in $fields) 
-               {
-                   if($ff.Name -eq 'ADBCountryDocumentType' -or $ff.Name -eq 'ADBCountry')                   
-                   {
-                       $ff.Required = $True
-                   }
-               }
-               $ct.Update($false)
-               $context.ExecuteQuery()
-           }
-
-            if($ct.Name -eq 'ADB Project Document') {
-               #load field reference
-               $fields = $ct.FieldLinks
-               $context.Load($fields)
-               $context.ExecuteQuery()
-               foreach($ff in $fields) 
-               {
-                   if($ff.Name -eq 'ADBProjectDocumentType' -or $ff.Name -eq 'ADBCountry' -or $ff.Name -eq 'ADBSector' -or $ff.Name -eq 'ADBProject')             
-                   {
-                       $ff.Required = $True
-                   }
-               }
-               $ct.Update($false)
-               $context.ExecuteQuery()
-           }
-}
-
+SetFieldStatus -hidden 1 -listName "FinalDocs" -contentTypes @('ADB Document','ADB Country Document','ADB Project Document') -fields @('ADBDocumentTypeValue','ADBContentGroup') -context $context
+SetFieldStatus -required 1 -listName "FinalDocs" -contentTypes @('ADB Document','ADB Country Document','ADB Project Document') -fields @('Title','ADBAuthors','ADBDepartmentOwner','ADBDocumentSecurity','ADBDocumentLanguage','ADBSourceLink','ADBCirculatedLink') -context $context
+SetFieldStatus -required 1 -listName "FinalDocs" -contentTypes @('ADB Document') -fields @('ADBDocumentType') -context $context
+SetFieldStatus -required 1 -listName "FinalDocs" -contentTypes @('ADB Country Document') -fields @('ADBCountryDocumentType','ADBCountry') -context $context
+SetFieldStatus -required 1 -listName "FinalDocs" -contentTypes @('ADB Project Document') -fields @('ADBProjectDocumentType','ADBCountry','ADBSector','ADBProject') -context $context
 echo "END: HIDING Content Group FROM Final Docs"
 
 echo "START: HIDING Content Group FROM Documents"
-
-$documents = Get-PnPList -Identity "Documents"
-$context.Load($documents)
-$context.ExecuteQuery()
-
-$contentTypes = $documents.ContentTypes
-$context.Load($contentTypes)
-$context.ExecuteQuery()
-
-foreach($ct in $contentTypes){        
-           # echo $ct.Name      
-           if($ct.Name -eq 'ADB Document' -Or $ct.Name -eq 'ADB Country Document' -Or $ct.Name -eq 'ADB Project Document') {
-               #load field reference
-               $fields = $ct.FieldLinks
-               $context.Load($fields)
-               $context.ExecuteQuery()
-               foreach($ff in $fields) 
-               {
-                   if(
-                   $ff.Name -eq 'ADBDocumentTypeValue' -or 
-                   $ff.Name -eq 'ADBContentGroup'
-                   ) 
-                   {
-                       $ff.Hidden = $True
-                   }
-               }
-               $ct.Update($false)
-               $context.ExecuteQuery()
-           }
-
-           
-}
-
+SetFieldStatus -hidden 1 -listName "Documents" -contentTypes @('Document','ADB Document','ADB Country Document','ADB Project Document') -fields @('ADBDocumentTypeValue','ADBContentGroup') -context $context
 echo "END: HIDING Content Group FROM Documents"
 
-
 echo "START: HIDING Content Group FROM Team Tasks"
-
-$teamTasks = Get-PnPList -Identity "Team Tasks"
-$context.Load($teamTasks)
-$context.ExecuteQuery()
-
-$contentTypes = $teamTasks.ContentTypes
-$context.Load($contentTypes)
-$context.ExecuteQuery()
-
-foreach($ct in $contentTypes){        
-           # echo $ct.Name      
-           if($ct.Name -eq 'Task') {
-               #load field reference
-               $fields = $ct.FieldLinks
-               $context.Load($fields)
-               $context.ExecuteQuery()
-               foreach($ff in $fields) 
-               {
-                   if(
-                   $ff.Name -eq 'ADBContentGroup'
-                   ) 
-                   {
-                       $ff.Hidden = $True
-                   }
-               }
-               $ct.Update($false)
-               $context.ExecuteQuery()
-           }
-
-           
-}
-
+SetFieldStatus -hidden 1 -listName "Team Tasks" -contentTypes @('Task') -fields @('ADBContentGroup') -context $context
 echo "END: HIDING Content Group FROM Team Tasks"
 
 echo "START: HIDING Content Group FROM Calendar"
-
-$calendar = Get-PnPList -Identity "Calendar"
-$context.Load($calendar)
-$context.ExecuteQuery()
-
-$contentTypes = $calendar.ContentTypes
-$context.Load($contentTypes)
-$context.ExecuteQuery()
-
-foreach($ct in $contentTypes){        
-           # echo $ct.Name      
-           if($ct.Name -eq 'Event') {
-               #load field reference
-               $fields = $ct.FieldLinks
-               $context.Load($fields)
-               $context.ExecuteQuery()
-               foreach($ff in $fields) 
-               {
-                   if(
-                   $ff.Name -eq 'ADBContentGroup'
-                   ) 
-                   {
-                       $ff.Hidden = $True
-                   }
-               }
-               $ct.Update($false)
-               $context.ExecuteQuery()
-           }
-
-           
-}
-
+SetFieldStatus -hidden 1 -listName "Calendar" -contentTypes @('Event') -fields @('ADBContentGroup') -context $context
 echo "END: HIDING Content Group FROM Calendar"
 
 echo "START: HIDING Content Group FROM Site Pages"
-
-#$sPages = Get-PnPList -Identity "SitePages"
-
-$ctx = Get-PnPContext
-$web2 = $ctx.Web
-$ctx.Load($web2)
-$ctx.Load($web2.Lists)
-$sPages = $web2.Lists.GetByTitle("Site Pages")
-$spContentTypes = $sPages.ContentTypes
-$ctx.Load($sPages)
-$ctx.Load($spContentTypes)
-$ctx.ExecuteQuery()
-
-
-
-foreach($ct2 in $spContentTypes){        
-           # echo $ct.Name      
-           if($ct2.Name -eq 'Wiki Page') {
-               #load field reference
-               $fields = $ct2.FieldLinks
-               $ctx.Load($fields)
-               $ctx.ExecuteQuery()
-               foreach($fl in $fields) 
-               {
-                   if($fl.Name -eq 'ADBContentGroup') 
-                   {
-                        $fl.DeleteObject();
-                        $ct2.Update($false)
-                        $ctx.ExecuteQuery()
-                        break
-                   }
-               }
-               
-           }
-}
-
+RemoveFieldLink -listName "Site Pages" -contentType "Wiki Page" -field "ADBContentGroup" -context $context -web $web
 echo "END: HIDING Content Group FROM Site Pages"
 
 
@@ -524,102 +507,18 @@ Set-PnPTenantSite -Url $targetWebUrl -NoScriptSite:$true
 echo "END: ENABLE NOSCRIPT"
 
 echo "END HOMEPAGE"
-#>
+
 #Updates the workflow references
 echo "START: UPDATE WORKFLOW REFERENCES"
-
-#Gets the site of the target website
-$site = $context.Site
-$context.Load($site)
-$context.ExecuteQuery()
-
-#gets reference to the "Documents" document library
-$documents = $web.Lists.GetByTitle("Documents")
-
-$context.Load($documents)
-$context.ExecuteQuery()
-
-#loads all workflow associations
-$context.Load($documents.WorkflowAssociations)
-$context.ExecuteQuery()
-
 #This is required to use the WorkflowServicesManager class
 Add-Type -Path "Microsoft.SharePoint.Client.WorkflowServices.dll"
-
-#Gets the WorkflowServicesManager instance
-$servicesManager = New-Object Microsoft.SharePoint.Client.WorkflowServices.WorkflowServicesManager($context, $web)
-#Gets the WorkflowSubscriptionService
-$subscriptionService = $servicesManager.GetWorkflowSubscriptionService()
-#List all the subscription
-$subscriptions = $subscriptionService.EnumerateSubscriptionsByList($documents.Id)
-
-$context.Load($subscriptions)
-$context.ExecuteQuery()
-
-#Gets a reference to the Workflow history list
-$wfh = $web.Lists.GetByTitle("Workflow History");
-$wft = $web.Lists.GetByTitle("Update Document Type Workflow Tasks")
-
-#Gets a reference to the Workflow history task
-$context.Load($wfh)
-$context.Load($wft)
-$context.ExecuteQuery()
-
-#Loop through all the subscription and
-#set the HistoryListId and TaskListId
-#and publish
-foreach ($s in $subscriptions)
-{
-
-
-    if (
-        $s.Name -eq "Update ADB Project Document Type" -or
-        $s.Name -eq "Update ADB Country Document Type" -or
-        $s.Name -eq "Update ADB Document Type"
-        )
-    {
-        $s.SetProperty("HistoryListId", $wfh.Id)
-        $s.SetProperty("TaskListId", $wft.Id)
-        $s.SetProperty("FormData", "")
-        $subscriptionService.PublishSubscriptionForList($s, $documents.Id)
-    } 
-}
-$context.ExecuteQuery()
+UpdateWorkflowReferences -listName "Documents" -workflowHistory "Workflow History" -workflowTask "Update Document Type Workflow Tasks" -contentTypes @('Update ADB Project Document Type','Update ADB Country Document Type','Update ADB Document Type') -context $context
 
 echo "END: UPDATE WORKFLOW REFERENCES"
 
 echo "START: UPDATE PERMISSIONS"
-
-$context.Load($web.RoleDefinitions)
-$context.ExecuteQuery()
-
-foreach($rd in $web.RoleDefinitions){ 
-    if($rd.Name -eq "Edit") 
-    {
-        $oldBp = $rd.BasePermissions;
-        $oldBp.Clear([Microsoft.SharePoint.Client.PermissionKind]::CreateSSCSite)
-        $rd.BasePermissions = New-Object Microsoft.SharePoint.Client.BasePermissions
-
-        $rd.BasePermissions = $oldBp
-        $rd.Update()
-    }
-
-     if($rd.Name -eq "Contribute") 
-    {
-        $oldBp = $rd.BasePermissions;
-        $oldBp.Clear([Microsoft.SharePoint.Client.PermissionKind]::CreateSSCSite)
-        $oldBp.Clear([Microsoft.SharePoint.Client.PermissionKind]::DeleteListItems)
-        $oldBp.Clear([Microsoft.SharePoint.Client.PermissionKind]::DeleteVersions)
-        $rd.BasePermissions = New-Object Microsoft.SharePoint.Client.BasePermissions
-
-        $rd.BasePermissions = $oldBp
-        $rd.Update()
-    }
-
-
-    $context.ExecuteQuery()
-}
-
+RemoveFromPermission -role "Edit" -permissionToRemove @([Microsoft.SharePoint.Client.PermissionKind]::CreateSSCSite) -web $web -context $context
+RemoveFromPermission -role "Contribute" -permissionToRemove @([Microsoft.SharePoint.Client.PermissionKind]::CreateSSCSite,[Microsoft.SharePoint.Client.PermissionKind]::DeleteListItems,[Microsoft.SharePoint.Client.PermissionKind]::DeleteVersions) -web $web -context $context
 
 echo "END: UPDATE PERMISSIONS"
 
