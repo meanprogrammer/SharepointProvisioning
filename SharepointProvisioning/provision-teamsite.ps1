@@ -16,7 +16,12 @@ Param(
    [string]$sourceSite = "/teams/template_pnp"
 )
 
+#Uncomment the next line if and comment out all the functions if you want to use the
+#external funtions
+#. ".\functions.ps1"
+
 #Functions
+
 #Connect to a SharePoint Online Site
 Function Connect-SPOSite
 {
@@ -266,6 +271,28 @@ Function RemoveFromPermission
     }
 }
 
+Function CheckIfSiteExists()
+{
+    Param([string]$url)
+    Try
+    {
+        #echo $url
+        $existingSite = Get-PnPTenantSite -url $url -Detailed -ErrorAction Stop
+        Start-Sleep -Seconds 5
+        if($existingSite -ne $null)
+        {
+            echo "Target site already exist. Terminating provisioning script."
+            Exit
+        }
+    }
+    catch
+    {
+        #swallowing exception
+        echo $_.Exception.Message
+    }
+
+}
+
 #End Functions
 
 echo "BEGIN SITE PROVISIONING"
@@ -288,29 +315,17 @@ $getContentTemplate = $generateTemplate;
 #Get the credential for the execution of script
 $credentials = Get-Credential;
 
+#Call Function Connect-SPOSite to connect to Template Site
+#Initial connection
+Connect-SPOSite -url  $sourceWebUrl
 
 #Check if the target site already exists. Terminate the script if yes, else continue
 echo "START: CHECK IF SITE EXISTS"
 $targetWebUrl = "https://{0}.sharepoint.com/teams/{1}" -f $tenant, $alias
-Try
-{
-    $existingSite = Get-PnPTenantSite -url $targetWebUrl -Detailed -ErrorAction Stop
-    if($existingSite -ne $null)
-    {
-        echo "Target site already exist. Terminating provisioning script."
-        Exit
-    }
-}
-catch
-{
-    #swallowing exception
-    #echo $_.Exception.Message
-}
 
+CheckIfSiteExists -url $targetWebUrl
 
-#Call Function Connect-SPOSite to connect to Template Site
-Connect-SPOSite -url  $sourceWebUrl
-
+echo "END: CHECK IF SITE EXISTS"
 
 #Get the source context and web
 $sourceContext = Get-PnPContext
@@ -437,9 +452,9 @@ echo "START: APPLY CONTENTTYPES"
 Remove-PnPContentTypeFromList -List "Final Documents" -ContentType "Document" -Web $web
 
 #This will remove duplicate fields
-Remove-PnPField -List "Documents" -Identity "Update ADB Country Document Type" -Force -Web $web
-Remove-PnPField -List "Documents" -Identity "Update ADB Document Type" -Force -Web $web
-Remove-PnPField -List "Documents" -Identity "Update ADB Project Document Type" -Force -Web $web
+#Remove-PnPField -List "Documents" -Identity "Update ADB Country Document Type" -Force -Web $web
+#Remove-PnPField -List "Documents" -Identity "Update ADB Document Type" -Force -Web $web
+#Remove-PnPField -List "Documents" -Identity "Update ADB Project Document Type" -Force -Web $web
 
 echo "END: APPLY CONTENTTYPES"
 
